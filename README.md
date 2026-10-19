@@ -106,6 +106,10 @@ gcloud auth application-default login
 See the [setup guide](docs/SETUP.md) for model settings, authentication
 alternatives, and the [Codex executor](docs/SETUP.md#codex-executor).
 
+**No API key?** This fork adds a Claude Code executor (`--substrate cc`, JobBench).
+The executor, improver and judge all run through the `claude` CLI on a Claude
+subscription login. See [docs/CLAUDE_CODE.md](docs/CLAUDE_CODE.md).
+
 ## Run a benchmark
 
 The following example installs LAB and runs one task, then evaluates and reports

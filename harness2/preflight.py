@@ -43,10 +43,13 @@ def check(adapter, *, judge=False) -> list[str]:
             errors.append(f"{label}: {type(exc).__name__}; see README.md")
             return False
 
+    substrate = adapter.substrate.name
+    # The cc substrate runs everything through the `claude` CLI and needs no OpenCode.
+    needs_opencode = substrate != "cc"
     for validate in (
-        lambda: config.validate_models(judge=judge),
+        lambda: config.validate_models(judge=judge, substrate=substrate),
         adapter.tasks,
-        OpencodeSubstrate().preflight,
+        *((OpencodeSubstrate().preflight,) if needs_opencode else ()),
         adapter.preflight,
     ):
         try:
@@ -57,7 +60,7 @@ def check(adapter, *, judge=False) -> list[str]:
     bench = adapter.spec.name.split("-", 1)[0]
     name = {"jb": "job-bench-eval", "lab": "harvey-labs", "wb": "workbuddy-bench"}[bench]
     repo = config.DEPENDENCIES / name
-    for dependency in (name, "opencode"):
+    for dependency in (name, "opencode") if needs_opencode else (name,):
         target = config.DEPENDENCIES / dependency
         if (target / ".git").exists():
             try:
@@ -73,12 +76,15 @@ def check(adapter, *, judge=False) -> list[str]:
             f"{dependency} patch",
             ["git", "-C", target, "apply", "--reverse", "--check", patch],
         )
-    if not (config.OPENCODE_DIR / "node_modules").is_dir():
+    if needs_opencode and not (config.OPENCODE_DIR / "node_modules").is_dir():
         errors.append(f"OpenCode dependencies missing; run harness2-setup {bench}")
 
-    if any(
-        m.startswith("google-vertex") for m in (config.SOLVER_MODEL_OC, config.IMPROVER_MODEL)
-    ) or (judge and (bench == "wb" or config.JUDGE_MODEL.startswith(("claude", "gemini")))):
+    vertex_models = (config.SOLVER_MODEL_OC, config.IMPROVER_MODEL) if needs_opencode else ()
+    vertex_judge = judge and (
+        bench == "wb"
+        or (config.JUDGE_MODEL.startswith(("claude", "gemini")) and not config.LOOPBACK_JUDGE)
+    )
+    if any(m.startswith("google-vertex") for m in vertex_models) or vertex_judge:
         probe(
             "Google Application Default Credentials",
             ["gcloud", "auth", "application-default", "print-access-token"],

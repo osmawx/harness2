@@ -103,6 +103,12 @@ class Proposer:
             raise ValueError("Set HARNESS2_IMPROVER_MODEL before starting model sessions")
 
     def env(self) -> dict[str, str]:
+        if self.spec.kind == "claude_cli" and config.CLAUDE_AUTH == "subscription":
+            # The CLI's own login: no API key, no Vertex, so nothing is billed per token.
+            from ..substrate.claude_code import subscription_env
+
+            # The model travels as --model (see _claude_cli), not as ANTHROPIC_MODEL.
+            return subscription_env(os.environ)
         e = {k: v for k, v in os.environ.items() if k not in _DROP_ENV}
         if self.spec.kind == "claude_cli":
             e.update(
@@ -210,9 +216,10 @@ class Proposer:
     def _claude_cli(
         self, cwd: Path, mission: str, system: str, wall: int
     ) -> tuple[str, float, str]:
-        cli = shutil.which("claude") or "claude"
+        from ..substrate.claude_code import ISOLATION_FLAGS, claude_binary
+
         cmd = [
-            cli,
+            claude_binary(),
             "--dangerously-skip-permissions",
             "-p",
             "--output-format",
@@ -220,6 +227,10 @@ class Proposer:
             "--effort",
             self.spec.effort,
         ]
+        if config.CLAUDE_AUTH == "subscription":
+            # Keep the operator's own ~/.claude settings, hooks and MCP servers out of
+            # the improver session, and leave no resumable session behind.
+            cmd += [*ISOLATION_FLAGS, "--no-session-persistence", "--model", self.spec.model]
         stdin = mission
         if system:
             if len(system) > SYSTEM_ARG_MAX:

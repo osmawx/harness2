@@ -658,7 +658,39 @@ def _build_surface_texts() -> dict[str, _SurfaceText]:
             ),
             tts_surface=cx_tts,
         ),
+        "claude_code": _SurfaceText(
+            surface_md=_to_claude_code(_SURFACE_CODEX),
+            inv=_INV_TEMPLATE.replace(
+                "__LOOP_LEVER__",
+                "hook in `.claude/settings.json` -- for example, blocking a finish before a "
+                "{deliverable} exists, with a corrective reason",
+            ),
+            dom=_DOM_TEMPLATE.replace(
+                "__TRIGGER_SENTENCE__",
+                "A skill exists only once its name appears in `CLAUDE.md` as a trigger: write "
+                "that trigger line in the same edit.",
+            ),
+            tts_surface=_to_claude_code(cx_tts),
+        ),
     }
+
+
+# The codex and Claude Code surfaces share one layout (a single always-on file, skills with
+# optional `name:`, sub_agents, scripts, a Claude-Code-schema hooks file); only the paths
+# differ, so the Claude Code text is the codex text with its paths renamed.
+_CLAUDE_CODE_PATHS = (
+    ("`.codex/hooks.json`", "`.claude/settings.json`"),
+    (".agents/skills/", ".claude/skills/"),
+    ("AGENTS.md", "CLAUDE.md"),
+)
+
+
+def _to_claude_code(codex_text: str) -> str:
+    """A codex surface text with every codex path replaced by its Claude Code path."""
+    out = codex_text
+    for codex_path, claude_path in _CLAUDE_CODE_PATHS:
+        out = out.replace(codex_path, claude_path)
+    return out
 
 
 _SURFACE_TEXTS = _build_surface_texts()

@@ -29,7 +29,9 @@ from ..core.spec import BenchmarkAdapter
 
 BENCHES = ("jb", "wb", "lab")
 WB_SUBSETS = ("office", "web", "code")
-SUBSTRATES = ("oc", "cx")
+SUBSTRATES = ("oc", "cx", "cc")
+# Benchmarks with a Claude Code (cc) launcher; WB and LAB run inside their own harnesses.
+CC_BENCHES = ("jb",)
 
 MODES_DEFAULT = "parallel"
 MODES_HELP = (
@@ -50,6 +52,11 @@ def make_adapter(
         raise ValueError(f"unknown bench {bench!r}; expected one of {BENCHES}")
     if substrate not in SUBSTRATES:
         raise ValueError(f"unknown substrate {substrate!r}; expected one of {SUBSTRATES}")
+    if substrate == "cc" and bench not in CC_BENCHES:
+        raise ValueError(
+            f"--substrate cc is implemented for {CC_BENCHES} only; {bench!r} runs its agent "
+            f"inside the benchmark's own harness, which has no Claude Code launcher"
+        )
     if bench == "wb":
         if subset not in WB_SUBSETS:
             raise ValueError(f"--bench wb needs --subset from {WB_SUBSETS}, got {subset!r} ")
@@ -104,7 +111,7 @@ def add_cell_args(p: argparse._ActionsContainer) -> None:
         "--substrate",
         default="oc",
         choices=SUBSTRATES,
-        help="task-executor substrate: oc (opencode) | cx (codex)",
+        help="task-executor substrate: oc (opencode) | cx (codex) | cc (claude code, jb only)",
     )
 
 

@@ -31,9 +31,13 @@ harness2-setup = "harness2.cli.setup:main"
 harness2-check = "harness2.cli.check:main"
 harness2-demo = "harness2.cli.demo:main"
 harness2-bridge = "harness2.cli.bridge:main"
+harness2-claude-bridge = "harness2.cli.claude_bridge:main"
 
 [tool.setuptools.packages.find]
 include = ["harness2*"]
+
+[tool.setuptools.package-data]
+harness2 = ["benchmarks/claude_base_harness/*"]
 
 [tool.ruff]
 target-version = "py312"

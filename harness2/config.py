@@ -150,7 +150,10 @@ VERTEX_OPENAI_URL = (
     f"/locations/{VERTEX_REGION}/endpoints/openapi"
 )
 JB_JUDGE_API_BASE = env("HARNESS2_JUDGE_BASE_URL", VERTEX_OPENAI_URL if VERTEX_PROJECT else "")
-JB_JUDGE_API_KEY = env("HARNESS2_JUDGE_API_KEY", "")
+# A loopback judge endpoint is the local Claude bridge (harness2-claude-bridge), which
+# needs no key; any non-empty token satisfies the OpenAI client.
+LOOPBACK_JUDGE = JB_JUDGE_API_BASE.startswith(("http://127.0.0.1", "http://localhost"))
+JB_JUDGE_API_KEY = env("HARNESS2_JUDGE_API_KEY", "harness2-local" if LOOPBACK_JUDGE else "")
 JB_JUDGE_REASONING_EFFORT = "low"
 JB_REPORTING_JUDGE_DETAILS = ""
 JB_OBS_TRUNC = 50000
@@ -171,6 +174,19 @@ WB_MAX_JOBS = {"oc": 1, "cx": 1}
 WB_MAX_TRIALS = {"oc": 2, "cx": 2}
 WB_MODEL_CONNECTION = "local_proxy"
 
+# Claude Code substrate ("cc"): solver, improver and judge all run through the `claude`
+# CLI on its own login (a Claude subscription), never on an API key. Model ids are the
+# CLI's aliases or full names ("sonnet", "opus", "claude-sonnet-5-5"), never provider/model.
+CLAUDE_BIN = env("HARNESS2_CLAUDE_BIN", "")
+CLAUDE_CONFIG_DIR = env("HARNESS2_CLAUDE_CONFIG_DIR", "")
+CLAUDE_SOLVER_MODEL = env("HARNESS2_CLAUDE_MODEL", "sonnet")
+CLAUDE_IMPROVER_MODEL = env("HARNESS2_CLAUDE_IMPROVER_MODEL", CLAUDE_SOLVER_MODEL)
+CLAUDE_EFFORT = env("HARNESS2_CLAUDE_EFFORT", "high")
+# How the claude_cli improver channel authenticates: "subscription" (the CLI's own login)
+# or "vertex" (upstream behaviour). Vertex stays the default only where a project is set.
+CLAUDE_AUTH = env("HARNESS2_CLAUDE_AUTH", "vertex" if VERTEX_PROJECT else "subscription")
+CLAUDE_BRIDGE_CONCURRENCY = env_int("HARNESS2_CLAUDE_BRIDGE_CONCURRENCY", 8)
+
 DEFAULT_PROPOSER_CHANNEL = "opencode"
 PROPOSER_MODEL_BY_CHANNEL = {"opencode": IMPROVER_MODEL, "claude_cli": IMPROVER_MODEL}
 PHASE_WIDTH = 2
@@ -178,12 +194,35 @@ TRANSPORT_ATTEMPTS = 2
 PROPOSER_CONCURRENCY = 2
 
 
-def validate_models(*, judge: bool = False) -> None:
+def validate_models(*, judge: bool = False, substrate: str = "oc") -> None:
+    """Raise ConfigError when the models a run on `substrate` needs are unset or malformed."""
+    if substrate == "cc":
+        _validate_claude_models(judge=judge)
+        return
     require("HARNESS2_SOLVER_MODEL", needed_by="executor rollouts")
     if "/" not in SOLVER_MODEL_OC or "/" not in IMPROVER_MODEL:
         raise ConfigError("Executor and improver models must use OpenCode's provider/model syntax")
     if any(m.startswith("google-vertex") for m in (SOLVER_MODEL_OC, IMPROVER_MODEL)):
         if not VERTEX_PROJECT:
             raise ConfigError("Set GOOGLE_CLOUD_PROJECT for Vertex AI")
+    if judge:
+        require("HARNESS2_JUDGE_MODEL", needed_by="benchmark judging")
+
+
+def _validate_claude_models(*, judge: bool) -> None:
+    """The cc substrate takes bare Claude CLI model ids and must not touch an API key."""
+    for name, value in (
+        ("HARNESS2_CLAUDE_MODEL", CLAUDE_SOLVER_MODEL),
+        ("HARNESS2_CLAUDE_IMPROVER_MODEL", CLAUDE_IMPROVER_MODEL),
+    ):
+        if not value or "/" in value:
+            raise ConfigError(
+                f"{name} must be a Claude CLI model id such as 'sonnet' or 'opus', got {value!r}"
+            )
+    if CLAUDE_AUTH != "subscription":
+        raise ConfigError(
+            "The cc substrate runs on the Claude Code login only; set "
+            "HARNESS2_CLAUDE_AUTH=subscription (or unset it)"
+        )
     if judge:
         require("HARNESS2_JUDGE_MODEL", needed_by="benchmark judging")
